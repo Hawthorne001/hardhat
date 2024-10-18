@@ -9,7 +9,7 @@ import { EdrProviderWrapper } from "../../../../src/internal/hardhat-network/pro
 import { ReturnData } from "../../../../src/internal/hardhat-network/provider/return-data";
 import {
   ConsoleLogs,
-  consoleLogToString,
+  ConsoleLogger,
 } from "../../../../src/internal/hardhat-network/stack-traces/consoleLogger";
 import {
   printMessageTrace,
@@ -26,8 +26,7 @@ import {
   StackTraceEntryType,
 } from "../../../../src/internal/hardhat-network/stack-traces/solidity-stack-trace";
 import { SolidityTracer } from "../../../../src/internal/hardhat-network/stack-traces/solidityTracer";
-import { VmTraceDecoder } from "../../../../src/internal/hardhat-network/stack-traces/vm-trace-decoder";
-import { VMTracer } from "../../../../src/internal/hardhat-network/stack-traces/vm-tracer";
+import { VmTraceDecoderT } from "../../../../src/internal/hardhat-network/stack-traces/vm-trace-decoder";
 import {
   BuildInfo,
   CompilerInput,
@@ -40,6 +39,7 @@ import { SUPPORTED_SOLIDITY_VERSION_RANGE } from "../../../../src/internal/hardh
 import { TracingConfig } from "../../../../src/internal/hardhat-network/provider/node-types";
 import { BUILD_INFO_FORMAT_VERSION } from "../../../../src/internal/constants";
 import { FakeModulesLogger } from "../helpers/fakeLogger";
+import { requireNapiRsModule } from "../../../../src/common/napi-rs";
 import {
   compileFiles,
   COMPILER_DOWNLOAD_TIMEOUT,
@@ -57,6 +57,10 @@ import {
   instantiateProvider,
   traceTransaction,
 } from "./execution";
+
+const { stackTraceEntryTypeToString } = requireNapiRsModule(
+  "@nomicfoundation/edr"
+) as typeof import("@nomicfoundation/edr");
 
 interface StackFrameDescription {
   type: string;
@@ -95,7 +99,7 @@ interface DeploymentTransaction {
   };
   stackTrace?: StackFrameDescription[]; // No stack trace === the tx MUST be successful
   imports?: string[]; // Imports needed for successful compilation
-  consoleLogs?: ConsoleLogs[];
+  consoleLogs?: ConsoleLogs;
   gas?: number;
 }
 
@@ -110,7 +114,7 @@ interface CallTransaction {
   // The second one is with function and parms
   function?: string; // Default: no data
   params?: Array<string | number>; // Default: no param
-  consoleLogs?: ConsoleLogs[];
+  consoleLogs?: ConsoleLogs;
   gas?: number;
 }
 
@@ -153,7 +157,7 @@ function defineTest(
   ) {
     it.skip(desc, func);
   } else if (testDefinition.only !== undefined && testDefinition.only) {
-    // eslint-disable-next-line no-only-tests/no-only-tests
+    // eslint-disable-next-line mocha/no-exclusive-tests
     it.only(desc, func);
   } else {
     it(desc, func);
@@ -317,7 +321,7 @@ function compareStackTraces(
     const actual = trace[i];
     const expected = description[i];
 
-    const actualErrorType = StackTraceEntryType[actual.type];
+    const actualErrorType = stackTraceEntryTypeToString(actual.type);
     const expectedErrorType = expected.type;
 
     if (
@@ -336,22 +340,15 @@ function compareStackTraces(
       `Stack trace of tx ${txIndex} entry ${i} type is incorrect: expected ${expectedErrorType}, got ${actualErrorType}`
     );
 
-    const actualMessage = (actual as any).message as
-      | ReturnData
-      | string
-      | undefined;
-
-    // actual.message is a ReturnData in revert errors, but a string
-    // in custom errors
-    let decodedMessage = "";
-    if (typeof actualMessage === "string") {
-      decodedMessage = actualMessage;
-    } else if (
-      actualMessage instanceof ReturnData &&
-      actualMessage.isErrorReturnData()
-    ) {
-      decodedMessage = actualMessage.decodeError();
-    }
+    // actual.message is a ReturnData in revert errors but in custom errors
+    // we need to decode it
+    const decodedMessage =
+      "message" in actual
+        ? actual.message
+        : "returnData" in actual &&
+          new ReturnData(actual.returnData).isErrorReturnData()
+        ? new ReturnData(actual.returnData).decodeError()
+        : "";
 
     if (expected.message !== undefined) {
       assert.equal(
@@ -455,7 +452,7 @@ function compareStackTraces(
   assert.lengthOf(trace, description.length);
 }
 
-function compareConsoleLogs(logs: string[], expectedLogs?: ConsoleLogs[]) {
+function compareConsoleLogs(logs: string[], expectedLogs?: ConsoleLogs) {
   if (expectedLogs === undefined) {
     return;
   }
@@ -464,7 +461,7 @@ function compareConsoleLogs(logs: string[], expectedLogs?: ConsoleLogs[]) {
 
   for (let i = 0; i < logs.length; i++) {
     const actual = logs[i];
-    const expected = consoleLogToString(expectedLogs[i]);
+    const expected = ConsoleLogger.format(expectedLogs[i]);
 
     assert.equal(actual, expected);
   }
@@ -498,7 +495,7 @@ async function runTest(
 
   const logger = new FakeModulesLogger();
   const solidityTracer = new SolidityTracer();
-  const [provider, vmTracer] = await instantiateProvider(
+  const provider = await instantiateProvider(
     {
       enabled: false,
       printLineFn: logger.printLineFn(),
@@ -517,7 +514,6 @@ async function runTest(
         txIndex,
         tx,
         provider,
-        vmTracer,
         compilerOutput,
         txIndexToContract
       );
@@ -541,22 +537,19 @@ async function runTest(
         txIndex,
         tx,
         provider,
-        vmTracer,
         compilerOutput,
         contract!
       );
     }
 
-    compareConsoleLogs(logger.lines, tx.consoleLogs);
-
-    const vmTraceDecoder = (provider as any)._vmTraceDecoder as VmTraceDecoder;
+    const vmTraceDecoder = (provider as any)._vmTraceDecoder as VmTraceDecoderT;
     const decodedTrace = vmTraceDecoder.tryToDecodeMessageTrace(trace);
 
     try {
       if (tx.stackTrace === undefined) {
         assert.isFalse(
           trace.exit.isError(),
-          `Transaction ${txIndex} shouldn't have failed`
+          `Transaction ${txIndex} shouldn't have failed (${trace.exit.getReason()})`
         );
       } else {
         assert.isDefined(
@@ -591,6 +584,8 @@ async function runTest(
         throw err;
       }
     }
+
+    compareConsoleLogs(logger.lines, tx.consoleLogs);
   }
 }
 
@@ -650,7 +645,6 @@ async function runDeploymentTransactionTest(
   txIndex: number,
   tx: DeploymentTransaction,
   provider: EdrProviderWrapper,
-  vmTracer: VMTracer,
   compilerOutput: CompilerOutput,
   txIndexToContract: Map<number, DeployedContract>
 ): Promise<CreateMessageTrace> {
@@ -682,7 +676,7 @@ async function runDeploymentTransactionTest(
 
   const data = Buffer.concat([deploymentBytecode, params]);
 
-  const trace = await traceTransaction(provider, vmTracer, {
+  const trace = await traceTransaction(provider, {
     value: tx.value !== undefined ? BigInt(tx.value) : undefined,
     data,
     gas: tx.gas !== undefined ? BigInt(tx.gas) : undefined,
@@ -695,7 +689,6 @@ async function runCallTransactionTest(
   txIndex: number,
   tx: CallTransaction,
   provider: EdrProviderWrapper,
-  vmTracer: VMTracer,
   compilerOutput: CompilerOutput,
   contract: DeployedContract
 ): Promise<CallMessageTrace> {
@@ -716,7 +709,7 @@ async function runCallTransactionTest(
     data = Buffer.from([]);
   }
 
-  const trace = await traceTransaction(provider, vmTracer, {
+  const trace = await traceTransaction(provider, {
     to: contract.address,
     value: tx.value !== undefined ? BigInt(tx.value) : undefined,
     data,
@@ -773,7 +766,7 @@ describe("Stack traces", function () {
       process.exit(1);
     }
 
-    // eslint-disable-next-line no-only-tests/no-only-tests
+    // eslint-disable-next-line mocha/no-exclusive-tests
     describe.only(`Use compiler at ${customSolcPath} with version ${customSolcVersion}`, function () {
       const compilerOptions = {
         solidityVersion: customSolcVersion,
@@ -867,7 +860,7 @@ function defineTestForSolidityMajorVersion(
   testsPath: string
 ) {
   for (const compilerOptions of solcVersionsCompilerOptions) {
-    // eslint-disable-next-line no-only-tests/no-only-tests
+    // eslint-disable-next-line mocha/no-exclusive-tests
     const describeFn = compilerOptions.only === true ? describe.only : describe;
 
     describeFn(`Use compiler ${compilerOptions.compilerPath}`, function () {

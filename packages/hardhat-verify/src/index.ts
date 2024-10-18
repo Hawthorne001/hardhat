@@ -17,10 +17,12 @@ import {
   TASK_VERIFY_SOURCIFY,
   TASK_VERIFY_SOURCIFY_DISABLED_WARNING,
   TASK_VERIFY_GET_CONTRACT_INFORMATION,
+  TASK_VERIFY_BLOCKSCOUT,
 } from "./internal/task-names";
 import {
   etherscanConfigExtender,
   sourcifyConfigExtender,
+  blockscoutConfigExtender,
 } from "./internal/config";
 import {
   InvalidConstructorArgumentsError,
@@ -44,6 +46,7 @@ import {
 import "./internal/type-extensions";
 import "./internal/tasks/etherscan";
 import "./internal/tasks/sourcify";
+import "./internal/tasks/blockscout";
 
 // Main task args
 export interface VerifyTaskArgs {
@@ -52,6 +55,7 @@ export interface VerifyTaskArgs {
   constructorArgs?: string;
   libraries?: string;
   contract?: string;
+  force: boolean;
   listNetworks: boolean;
 }
 
@@ -61,6 +65,7 @@ interface VerifySubtaskArgs {
   constructorArguments: string[];
   libraries: LibraryToAddress;
   contract?: string;
+  force?: boolean;
 }
 
 export interface VerificationResponse {
@@ -82,6 +87,7 @@ export interface VerificationSubtask {
 
 extendConfig(etherscanConfigExtender);
 extendConfig(sourcifyConfigExtender);
+extendConfig(blockscoutConfigExtender);
 
 /**
  * Main verification task.
@@ -114,6 +120,11 @@ task(TASK_VERIFY, "Verifies a contract on Etherscan or Sourcify")
     "contract",
     "Fully qualified name of the contract to verify. Skips automatic detection of the contract. " +
       "Use if the deployed bytecode matches more than one contract in your project"
+  )
+  .addFlag(
+    "force",
+    "Enforce contract verification even if the contract is already verified. " +
+      "Use to re-verify partially verified contracts on Blockscout"
   )
   .addFlag("listNetworks", "Print the list of supported networks")
   .setAction(async (taskArgs: VerifyTaskArgs, { run }) => {
@@ -173,7 +184,18 @@ subtask(
       });
     }
 
-    if (!config.etherscan.enabled && !config.sourcify.enabled) {
+    if (config.blockscout.enabled) {
+      verificationSubtasks.push({
+        label: "Blockscout",
+        subtaskName: TASK_VERIFY_BLOCKSCOUT,
+      });
+    }
+
+    if (
+      !config.etherscan.enabled &&
+      !config.sourcify.enabled &&
+      !config.blockscout.enabled
+    ) {
       console.warn(
         chalk.yellow(
           `[WARNING] No verification services are enabled. Please enable at least one verification service in your configuration.`
@@ -266,9 +288,16 @@ subtask(TASK_VERIFY_VERIFY)
   .addOptionalParam("constructorArguments", undefined, [], types.any)
   .addOptionalParam("libraries", undefined, {}, types.any)
   .addOptionalParam("contract")
+  .addFlag("force")
   .setAction(
     async (
-      { address, constructorArguments, libraries, contract }: VerifySubtaskArgs,
+      {
+        address,
+        constructorArguments,
+        libraries,
+        contract,
+        force,
+      }: VerifySubtaskArgs,
       { run, config }
     ) => {
       // This can only happen if the subtask is invoked from within Hardhat by a user script or another task.
@@ -286,6 +315,7 @@ subtask(TASK_VERIFY_VERIFY)
           constructorArgsParams: constructorArguments,
           libraries,
           contract,
+          force,
         });
       }
 

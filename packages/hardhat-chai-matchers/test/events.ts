@@ -2,6 +2,7 @@ import type {
   AnotherContract,
   EventsContract,
   MatchersContract,
+  OverrideEventContract,
 } from "./contracts";
 
 import { expect, AssertionError } from "chai";
@@ -14,6 +15,7 @@ import { useEnvironment, useEnvironmentWithNode } from "./helpers";
 describe(".to.emit (contract events)", () => {
   let contract: EventsContract;
   let otherContract: AnotherContract;
+  let overrideEventContract: OverrideEventContract;
   let matchers: MatchersContract;
 
   describe("with the in-process hardhat network", function () {
@@ -37,6 +39,12 @@ describe(".to.emit (contract events)", () => {
           "Events"
         )
       ).deploy(await otherContract.getAddress());
+
+      overrideEventContract = await (
+        await this.hre.ethers.getContractFactory<[], OverrideEventContract>(
+          "OverrideEventContract"
+        )
+      ).deploy();
 
       const Matchers = await this.hre.ethers.getContractFactory<
         [],
@@ -405,7 +413,7 @@ describe(".to.emit (contract events)", () => {
           );
         });
 
-        describe("nested predicate", async function () {
+        describe("nested predicate", function () {
           it("Should succeed when predicate passes", async function () {
             await expect(contract.emitUintArray(1, 2))
               .to.emit(contract, "WithUintArray")
@@ -630,7 +638,7 @@ describe(".to.emit (contract events)", () => {
           "WithStringArg"
         );
       });
-      describe("When detecting two events from one call (chaining)", async function () {
+      describe("When detecting two events from one call (chaining)", function () {
         it("Should succeed when both expected events are indeed emitted", async function () {
           await expect(contract.emitUintAndString(1, "a string"))
             .to.emit(contract, "WithUintArg")
@@ -663,7 +671,7 @@ describe(".to.emit (contract events)", () => {
             );
           });
         });
-        describe("When specifying .withArgs()", async function () {
+        describe("When specifying .withArgs()", function () {
           it("Should pass when expecting the correct args from the first event", async function () {
             await expect(contract.emitUintAndString(1, "a string"))
               .to.emit(contract, "WithUintArg")
@@ -871,6 +879,31 @@ describe(".to.emit (contract events)", () => {
     it("With transaction hash", async () => {
       const tx = await contract.emitWithoutArgs();
       await expect(tx.hash).to.emit(contract, "WithoutArgs");
+    });
+
+    describe("When event is overloaded", () => {
+      it("Should fail when the event name is ambiguous", async function () {
+        await expect(
+          expect(overrideEventContract.emitSimpleEventWithUintArg(1n)).to.emit(
+            overrideEventContract,
+            "simpleEvent"
+          )
+        ).to.be.eventually.rejectedWith(
+          AssertionError,
+          `ambiguous event description (i.e. matches "simpleEvent(uint256)", "simpleEvent()")`
+        );
+      });
+
+      it("Should pass when the event name is not ambiguous", async function () {
+        await expect(overrideEventContract.emitSimpleEventWithUintArg(1n))
+          .to.emit(overrideEventContract, "simpleEvent(uint256)")
+          .withArgs(1);
+
+        await expect(overrideEventContract.emitSimpleEventWithoutArg()).to.emit(
+          overrideEventContract,
+          "simpleEvent()"
+        );
+      });
     });
   }
 });

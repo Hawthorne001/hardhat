@@ -19,6 +19,7 @@ import {
 
 import { LibraryToAddress } from "./solc/artifacts";
 import {
+  ABIArgumentTypeErrorType,
   isABIArgumentLengthError,
   isABIArgumentOverflowError,
   isABIArgumentTypeError,
@@ -90,6 +91,7 @@ To learn how to add custom networks, follow these instructions: https://hardhat.
  * const errors: Record<string, HardhatVerifyError> = {
  *   verify:etherscan: { message: 'Error message for Etherscan' },
  *   verify:sourcify: { message: 'Error message for Sourcify' },
+ *   verify:blockscout: { message: 'Error message for Blockscout' },
  *   // Add more errors here...
  * };
  * printVerificationErrors(errors);
@@ -101,6 +103,9 @@ To learn how to add custom networks, follow these instructions: https://hardhat.
  * //
  * // Sourcify:
  * // Error message for Sourcify
+ * //
+ * // Blockscout:
+ * // Error message for Blockscout
  * //
  * // ... (more errors if present)
  */
@@ -228,6 +233,24 @@ export async function encodeArguments(
   const contractInterface = new Interface(abi);
   let encodedConstructorArguments;
   try {
+    // encodeDeploy doesn't catch subtle type mismatches, such as a number
+    // being passed when a string is expected, so we have to validate the
+    // scenario manually.
+    const expectedConstructorArgs = contractInterface.deploy.inputs;
+    constructorArguments.forEach((arg, i) => {
+      if (
+        expectedConstructorArgs[i]?.type === "string" &&
+        typeof arg !== "string"
+      ) {
+        throw new ABIArgumentTypeError({
+          code: "INVALID_ARGUMENT",
+          argument: expectedConstructorArgs[i].name,
+          value: arg,
+          reason: "invalid string value",
+        } as ABIArgumentTypeErrorType);
+      }
+    });
+
     encodedConstructorArguments = contractInterface
       .encodeDeploy(constructorArguments)
       .replace("0x", "");

@@ -1,5 +1,35 @@
 # @nomicfoundation/hardhat-viem
 
+## 2.0.5
+
+### Patch Changes
+
+- 6010386: Moved types to `HardhatViemHelpers` and initialized `ContractTypesMap` as empty for better extensibility. Improved performance by disabling retries in dev nets (thanks @TateB!)
+
+## 2.0.4
+
+### Patch Changes
+
+- efa905d: Fix for corrupted Hardhat peer dependency version from pnpm.
+
+## 2.0.3
+
+### Patch Changes
+
+- a8a6038: Added `ContractTypesMap` to simplify contract type imports (thanks @beepidibop!)
+
+## 2.0.2
+
+### Patch Changes
+
+- ccb0ace: Added support for library linking (thanks @Chlebamaticon!)
+
+## 2.0.1
+
+### Patch Changes
+
+- a181462: Fix to add guard for updated `TransactionReceipt` type in `viem`
+
 ## 2.0.0
 
 ### Major Changes

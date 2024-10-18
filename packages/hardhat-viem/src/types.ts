@@ -1,5 +1,6 @@
 import type * as viemT from "viem";
 import type { ArtifactsMap } from "hardhat/types/artifacts";
+import type { Libraries } from "./internal/bytecode";
 
 export type PublicClient = viemT.PublicClient<viemT.Transport, viemT.Chain>;
 export type WalletClient = viemT.WalletClient<
@@ -38,9 +39,12 @@ export interface SendTransactionConfig {
 
 export interface DeployContractConfig extends SendTransactionConfig {
   confirmations?: number;
+  libraries?: Libraries<viemT.Address>;
 }
 
-export type SendDeploymentTransactionConfig = SendTransactionConfig;
+export interface SendDeploymentTransactionConfig extends SendTransactionConfig {
+  libraries?: Libraries<viemT.Address>;
+}
 
 export interface GetContractAtConfig {
   client?: KeyedClient;
@@ -78,5 +82,24 @@ export declare function getContractAt<CN extends string>(
   address: viemT.Address,
   config?: GetContractAtConfig
 ): Promise<GetContractReturnType>;
+
+export interface HardhatViemHelpers {
+  getPublicClient(
+    publicClientConfig?: Partial<viemT.PublicClientConfig>
+  ): Promise<PublicClient>;
+  getWalletClients(
+    walletClientConfig?: Partial<viemT.WalletClientConfig>
+  ): Promise<WalletClient[]>;
+  getWalletClient(
+    address: viemT.Address,
+    walletClientConfig?: Partial<viemT.WalletClientConfig>
+  ): Promise<WalletClient>;
+  getTestClient(
+    testClientConfig?: Partial<viemT.TestClientConfig>
+  ): Promise<TestClient>;
+  deployContract: typeof deployContract;
+  sendDeploymentTransaction: typeof sendDeploymentTransaction;
+  getContractAt: typeof getContractAt;
+}
 
 export type { AbiParameterToPrimitiveType } from "abitype";

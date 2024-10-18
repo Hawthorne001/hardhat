@@ -11,14 +11,10 @@ describe("Default config", function () {
       assert.fail("Mainnet entry should exist");
     }
 
-    for (const hardfork of Object.values(HardforkName)) {
-      if (hardfork === HardforkName.CANCUN) {
-        // temporarily skipped until Cancun is enabled in mainnet
-        continue;
-      }
+    const history = mainnetChainConfig.hardforkHistory;
 
-      const hardforkHistoryEntry =
-        mainnetChainConfig.hardforkHistory.get(hardfork);
+    for (const hardfork of Object.values(HardforkName)) {
+      const hardforkHistoryEntry = history.get(hardfork);
       assert.isDefined(
         hardforkHistoryEntry,
         `No hardfork history entry for ${hardfork}`

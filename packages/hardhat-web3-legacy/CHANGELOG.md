@@ -1,4 +1,4 @@
-# @nomiclabs/hardhat-web3
+# @nomiclabs/hardhat-web3-legacy
 
 ## 2.1.0
 
@@ -14,9 +14,3 @@
 - Updated dependencies [e139cf3]
 - Updated dependencies [14b3042]
   - hardhat@2.26.0
-
-## 2.0.1
-
-### Patch Changes
-
-- c016446: Fix a dependency error in hardhat-web3

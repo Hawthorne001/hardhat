@@ -1,5 +1,13 @@
 # @nomicfoundation/hardhat-viem
 
+## 2.1.1
+
+### Patch Changes
+
+- bdba581: Fixed "Multiple networks with chain id found" error when multiple chains share the same chain id ([#7065](https://github.com/NomicFoundation/hardhat/issues/7065))
+- Updated dependencies [11ee260]
+  - hardhat@2.26.2
+
 ## 2.1.0
 
 ### Minor Changes
